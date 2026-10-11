@@ -1,0 +1,9 @@
+# Simpan sebagai /etc/jasstore/rclone.conf (chmod 600). Satu remote bernama "jasstore".
+[jasstore]
+type = s3
+provider = Other
+access_key_id = JSXXXXXXXXXXXXXXXXXX
+secret_access_key = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+endpoint = https://s3.jascall.com
+region = ap-southeast-1
+force_path_style = true

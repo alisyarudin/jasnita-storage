@@ -1,0 +1,10 @@
+[Unit]
+Description=Sinkronisasi rekaman PBX ke JasStore
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/jasstore-sync.sh
+Nice=10
+IOSchedulingClass=idle
