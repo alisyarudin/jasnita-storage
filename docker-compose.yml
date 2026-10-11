@@ -1,0 +1,16 @@
+services:
+  jasstore:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      JASSTORE_ROOT_ACCESS_KEY: jasstore
+      JASSTORE_ROOT_SECRET_KEY: ganti-dengan-secret-panjang
+      JASSTORE_REGION: ap-southeast-1
+      JASSTORE_PUBLIC_URL: http://localhost:9000
+    volumes:
+      - jasstore-data:/data
+volumes:
+  jasstore-data:

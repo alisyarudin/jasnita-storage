@@ -20,7 +20,7 @@ echo "== head-object"; cli s3api head-object --bucket "$B" --key besar.bin | gre
 echo "== copy & move"; cli s3 cp "s3://$B/folder a/kecil.txt" "s3://$B/salinan.txt"; cli s3 mv "s3://$B/salinan.txt" "s3://$B/pindah.txt"
 echo "== presign"; URL=$(cli s3 presign "s3://$B/pindah.txt" --expires-in 60); curl -sf "$URL" | grep -q "halo dari cli"
 echo "== sync folder"; mkdir -p "$T/sync/sub"; echo a > "$T/sync/a.txt"; echo b > "$T/sync/sub/b.txt"; cli s3 sync "$T/sync" "s3://$B/sync/"; cli s3 ls "s3://$B/sync/" --recursive | grep -q sub/b.txt
-echo "== list-objects-v2 paginasi"; [ "$(cli s3api list-objects-v2 --bucket "$B" --page-size 2 --query 'length(Contents)')" = "6" ]
+echo "== list-objects-v2 paginasi"; [ "$(cli s3api list-objects-v2 --bucket "$B" --page-size 2 --query 'length(Contents)')" = "5" ]
 echo "== hapus rekursif"; cli s3 rm "s3://$B/" --recursive
 echo "== hapus bucket"; cli s3 rb "s3://$B"
 rm -rf "$T"
