@@ -69,3 +69,28 @@ export function fmtDate(s) {
   if (d.getFullYear() < 1980) return '-'
   return d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
 }
+
+const extTypes = {
+  wav: 'audio/wav', mp3: 'audio/mpeg', ogg: 'audio/ogg', m4a: 'audio/mp4', gsm: 'audio/x-gsm', wav49: 'audio/x-wav49', flac: 'audio/flac',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp',
+  pdf: 'application/pdf',
+  txt: 'text/plain', log: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', xml: 'application/xml',
+  yml: 'text/yaml', yaml: 'text/yaml', ini: 'text/plain', conf: 'text/plain', env: 'text/plain', sql: 'text/plain', sh: 'text/plain',
+  php: 'text/plain', js: 'text/plain', ts: 'text/plain', go: 'text/plain', py: 'text/plain', html: 'text/plain', css: 'text/plain',
+}
+
+// Tentukan jenis pratinjau: audio | video | image | pdf | text | none
+export function previewKind(name, contentType) {
+  let ct = (contentType || '').split(';')[0].trim().toLowerCase()
+  if (!ct || ct === 'application/octet-stream' || ct === 'binary/octet-stream') {
+    const ext = (name.split('.').pop() || '').toLowerCase()
+    ct = extTypes[ext] || ''
+  }
+  if (ct.startsWith('audio/')) return 'audio'
+  if (ct.startsWith('video/')) return 'video'
+  if (ct.startsWith('image/')) return 'image'
+  if (ct === 'application/pdf') return 'pdf'
+  if (ct.startsWith('text/') || ct === 'application/json' || ct.endsWith('+json') || ct === 'application/xml' || ct.endsWith('+xml') || ct === 'application/x-yaml') return 'text'
+  return 'none'
+}

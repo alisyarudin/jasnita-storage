@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"path"
 	"strconv"
@@ -411,7 +412,13 @@ func (c *Console) getObject(w http.ResponseWriter, r *http.Request, k *meta.Acce
 	}
 	defer f.Close()
 	h := w.Header()
-	h.Set("Content-Type", o.ContentType)
+	ct := o.ContentType
+	if ct == "" || ct == "application/octet-stream" || ct == "binary/octet-stream" {
+		if guess := mime.TypeByExtension(strings.ToLower(path.Ext(key))); guess != "" {
+			ct = guess
+		}
+	}
+	h.Set("Content-Type", ct)
 	h.Set("ETag", `"`+o.ETag+`"`)
 	base := key
 	if i := strings.LastIndex(key, "/"); i >= 0 {

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, auth, downloadUrl, fmtBytes, fmtDate } from '../api.js'
+import { api, auth, downloadUrl, fmtBytes, fmtDate, previewKind } from '../api.js'
 import Modal from '../components/Modal.vue'
 
 const route = useRoute()
@@ -19,6 +19,13 @@ const showFolder = ref(false)
 const folderName = ref('')
 const fileInput = ref(null)
 const filter = ref('')
+const preview = ref(null)      // item yang dipratinjau
+const previewText = ref('')
+const previewErr = ref('')
+const previewKindOf = computed(() => preview.value ? previewKind(preview.value.name, preview.value.contentType) : 'none')
+const previewSrc = computed(() => preview.value ? downloadUrl(bucket.value, preview.value.key, false) : '')
+const files = computed(() => visible.value.filter(i => !i.dir))
+const previewIdx = computed(() => files.value.findIndex(f => f.key === preview.value?.key))
 
 const crumbs = computed(() => {
   const parts = prefix.value.split('/').filter(Boolean)
@@ -53,7 +60,34 @@ onMounted(() => { load(); loadInfo() })
 watch(() => [route.params.name, route.query.p], () => { items.value = []; load(); loadInfo() })
 
 function go(p) { router.push({ path: `/buckets/${bucket.value}`, query: p ? { p } : {} }) }
-function open(it) { it.dir ? go(it.key) : window.open(downloadUrl(bucket.value, it.key, false), '_blank') }
+function open(it) { it.dir ? go(it.key) : openPreview(it) }
+
+async function openPreview(it) {
+  preview.value = it
+  previewText.value = ''
+  previewErr.value = ''
+  if (previewKind(it.name, it.contentType) === 'text') {
+    if (it.size > 1024 * 1024) { previewErr.value = 'Berkas teks lebih dari 1 MB, unduh untuk melihat isinya.'; return }
+    try {
+      const res = await fetch(previewSrc.value)
+      if (!res.ok) throw new Error('gagal memuat (' + res.status + ')')
+      previewText.value = await res.text()
+    } catch (e) { previewErr.value = e.message }
+  }
+}
+function stepPreview(d) {
+  const i = previewIdx.value + d
+  if (i >= 0 && i < files.value.length) openPreview(files.value[i])
+}
+function onKey(e) {
+  if (!preview.value) return
+  if (e.key === 'Escape') preview.value = null
+  if (e.key === 'ArrowRight') stepPreview(1)
+  if (e.key === 'ArrowLeft') stepPreview(-1)
+}
+onMounted(() => window.addEventListener('keydown', onKey))
+onUnmounted(() => window.removeEventListener('keydown', onKey))
+
 
 function uploadFiles(files) {
   for (const f of files) {
@@ -143,6 +177,46 @@ function copyPath(it) {
       <span class="ellipsis" style="display:inline-block;max-width:220px;vertical-align:bottom">{{ u.name }}</span>
       <span v-if="u.error" style="color:var(--danger)"> · {{ u.error }}</span><span v-else class="muted"> · {{ u.pct }}%</span>
       <div class="bar"><i :style="{ width: u.pct + '%' }"></i></div>
+    </div>
+  </div>
+
+  <div v-if="preview" class="modal-bg" @mousedown.self="preview = null">
+    <div class="modal wide" role="dialog" :aria-label="preview.name">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+        <h2 class="ellipsis" style="margin:0;max-width:60%">{{ preview.name }}</h2>
+        <div class="preview-nav">
+          <button class="btn sm" :disabled="previewIdx <= 0" @click="stepPreview(-1)" title="Sebelumnya (←)">←</button>
+          <span class="muted" style="font-size:12px">{{ previewIdx + 1 }} / {{ files.length }}</span>
+          <button class="btn sm" :disabled="previewIdx >= files.length - 1" @click="stepPreview(1)" title="Berikutnya (→)">→</button>
+          <button class="btn sm ghost" @click="preview = null" title="Tutup (Esc)">✕</button>
+        </div>
+      </div>
+      <div class="preview">
+        <div class="stage">
+          <audio v-if="previewKindOf === 'audio'" :key="preview.key" :src="previewSrc" controls preload="metadata" autoplay></audio>
+          <video v-else-if="previewKindOf === 'video'" :key="preview.key" :src="previewSrc" controls preload="metadata"></video>
+          <img v-else-if="previewKindOf === 'image'" :key="preview.key" :src="previewSrc" :alt="preview.name" />
+          <iframe v-else-if="previewKindOf === 'pdf'" :key="preview.key" :src="previewSrc" :title="preview.name"></iframe>
+          <template v-else-if="previewKindOf === 'text'">
+            <div v-if="previewErr" class="none">{{ previewErr }}</div>
+            <pre v-else>{{ previewText }}</pre>
+          </template>
+          <div v-else class="none"><b>📄</b>Tidak ada pratinjau untuk tipe ini.<br />Unduh untuk membuka di aplikasi lain.</div>
+        </div>
+        <dl>
+          <dt>Ukuran</dt><dd>{{ fmtBytes(preview.size) }}</dd>
+          <dt>Tipe</dt><dd>{{ preview.contentType || '-' }}</dd>
+          <dt>Diubah</dt><dd>{{ fmtDate(preview.modified) }}</dd>
+          <dt>ETag</dt><dd><code>{{ preview.etag }}</code></dd>
+          <dt>Key</dt><dd><code>{{ preview.key }}</code></dd>
+          <dt>URL S3</dt><dd><code style="font-size:11px">{{ cfg?.endpoint }}/{{ bucket }}/{{ preview.key }}</code></dd>
+          <dd style="margin-top:14px;display:flex;gap:6px;flex-wrap:wrap">
+            <a class="btn sm primary" :href="downloadUrl(bucket, preview.key)">⬇ Unduh</a>
+            <a class="btn sm" :href="previewSrc" target="_blank" rel="noopener">Buka di tab baru</a>
+            <button class="btn sm" @click="copyPath(preview)">Salin URL</button>
+          </dd>
+        </dl>
+      </div>
     </div>
   </div>
 
