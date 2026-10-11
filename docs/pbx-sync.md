@@ -10,6 +10,25 @@ S3:    s3://recordings/pbx-sip1/2026/10/11/out-0812-1001-20261011-100000-1760000
 
 Diuji dengan rclone 1.75: copy, multipart (> 16 MB), `rclone check` (md5 cocok), `move`.
 
+## Sudah pakai `mc` + inotifywait? (callcenter-api-go)
+
+PBX yang sudah memakai pipeline dari `elastix-api/callcenter-api-go/docs/minio-recording-sync-setup.md`
+(inotifywait → `mc cp`, backfill `mc mirror`, API fallback presigned ke StorageRaya) **tidak perlu rclone**.
+`mc` dan `minio-go` v7.1.0 sudah diuji penuh ke JasStore (cp, mirror, stat, share, rb --force, presigned).
+Cukup arahkan ke JasStore:
+
+```bash
+# di PBX, sebagai user yang menjalankan asterisk-recording-sync.service
+mc alias set storageraya https://s3.jascall.com <ACCESS_KEY> <SECRET_KEY>   # nama alias dibiarkan, isinya diganti
+mc mb storageraya/pbx-recording
+systemctl restart asterisk-recording-sync.service
+mc mirror /var/spool/asterisk/monitor/ storageraya/pbx-recording/recordings/${SERVER_CODE}/   # backfill
+```
+
+Lalu di `callcenter-api-<pbx>.conf` bagian `[minio]`: `endpoint = s3.jascall.com`, `use_ssl = yes`,
+`access_key`/`secret_key` dari JasStore, `bucket`/`prefix` tetap. Restart `callcenter-api`.
+Tata letak key `recordings/<server_code>/monitor/YYYY/MM/DD/file.wav` tidak berubah, jadi `minioObjectKey()` di API tidak perlu disentuh.
+
 ## Dua mode
 
 | Mode | Perilaku | Cocok untuk |

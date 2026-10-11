@@ -226,6 +226,33 @@ func TestListObjects(t *testing.T) {
 	if len(all) != 8 {
 		t.Fatalf("v1 rekursif: %v", all)
 	}
+	// ?versions (mc rb --force, minio-go WithVersions): paginasi key-marker
+	var vers []string
+	km := ""
+	for i := 0; i < 10; i++ {
+		u := "/lst?versions&max-keys=3"
+		if km != "" {
+			u += "&key-marker=" + url.QueryEscape(km)
+		}
+		vr := e.must(e.do(adminAK, adminSK, "GET", u, nil, nil), 200, "versions")
+		var lv struct {
+			IsTruncated   bool     `xml:"IsTruncated"`
+			NextKeyMarker string   `xml:"NextKeyMarker"`
+			Keys          []string `xml:"Version>Key"`
+			VersionIDs    []string `xml:"Version>VersionId"`
+		}
+		if err := xml.Unmarshal(vr.body, &lv); err != nil || (len(lv.VersionIDs) > 0 && lv.VersionIDs[0] != "null") {
+			t.Fatalf("versions xml: %v %s", err, vr.body)
+		}
+		vers = append(vers, lv.Keys...)
+		if !lv.IsTruncated {
+			break
+		}
+		km = lv.NextKeyMarker
+	}
+	if len(vers) != 8 {
+		t.Fatalf("versions: %v", vers)
+	}
 	// encoding-type=url
 	e.must(e.do(adminAK, adminSK, "PUT", "/lst/sp%20ace%2Bplus.txt", []byte("x"), nil), 200, "put spasi")
 	lr = parse(e.must(e.do(adminAK, adminSK, "GET", "/lst?list-type=2&prefix=sp&encoding-type=url", nil, nil), 200, "enc"))

@@ -440,3 +440,97 @@ func (s *Server) listObjects(ctx context.Context, w http.ResponseWriter, r *http
 	s.writeXMLOK(w, out)
 	return nil
 }
+
+// ---------- ListObjectVersions (tanpa versioning: tiap objek satu versi "null") ----------
+
+type versionXML struct {
+	Key          string    `xml:"Key"`
+	VersionID    string    `xml:"VersionId"`
+	IsLatest     bool      `xml:"IsLatest"`
+	LastModified string    `xml:"LastModified"`
+	ETag         string    `xml:"ETag"`
+	Size         int64     `xml:"Size"`
+	StorageClass string    `xml:"StorageClass"`
+	Owner        *ownerXML `xml:"Owner,omitempty"`
+}
+
+type listVersionsXML struct {
+	XMLName             xml.Name          `xml:"ListVersionsResult"`
+	NS                  string            `xml:"xmlns,attr"`
+	Name                string            `xml:"Name"`
+	Prefix              string            `xml:"Prefix"`
+	KeyMarker           string            `xml:"KeyMarker"`
+	VersionIDMarker     string            `xml:"VersionIdMarker"`
+	NextKeyMarker       string            `xml:"NextKeyMarker,omitempty"`
+	NextVersionIDMarker string            `xml:"NextVersionIdMarker,omitempty"`
+	Delimiter           string            `xml:"Delimiter,omitempty"`
+	EncodingType        string            `xml:"EncodingType,omitempty"`
+	MaxKeys             int               `xml:"MaxKeys"`
+	IsTruncated         bool              `xml:"IsTruncated"`
+	Versions            []versionXML      `xml:"Version"`
+	CommonPrefixes      []commonPrefixXML `xml:"CommonPrefixes"`
+}
+
+// listObjectVersions dipakai mc (rb --force, ls --versions) dan minio-go WithVersions.
+func (s *Server) listObjectVersions(ctx context.Context, w http.ResponseWriter, r *http.Request, info *reqInfo) error {
+	if _, err := s.requireRead(ctx, info, false); err != nil {
+		return err
+	}
+	q := r.URL.Query()
+	prefix := q.Get("prefix")
+	delimiter := q.Get("delimiter")
+	encoding := q.Get("encoding-type")
+	if encoding != "" && encoding != "url" {
+		return newErr("InvalidArgument", "encoding-type hanya mendukung url")
+	}
+	maxKeys := 1000
+	if v := q.Get("max-keys"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return newErr("InvalidArgument", "max-keys tidak valid")
+		}
+		if n < maxKeys {
+			maxKeys = n
+		}
+	}
+	enc := func(v string) string {
+		if encoding == "url" {
+			return urlEncodeKey(v)
+		}
+		return v
+	}
+	cursor := ""
+	if marker := q.Get("key-marker"); marker != "" {
+		if delimiter != "" && strings.HasSuffix(marker, delimiter) {
+			cursor = incr(marker)
+		} else {
+			cursor = marker + "\x00"
+		}
+	}
+	entries, truncated, _, err := s.ListEntries(ctx, info.bucket, prefix, delimiter, cursor, maxKeys)
+	if err != nil {
+		return err
+	}
+	out := listVersionsXML{NS: xmlNS, Name: info.bucket, Prefix: enc(prefix), KeyMarker: enc(q.Get("key-marker")),
+		Delimiter: enc(delimiter), EncodingType: encoding, MaxKeys: maxKeys, IsTruncated: truncated}
+	owner := &ownerXML{ID: info.key.AccessKey, DisplayName: info.key.Name}
+	last := ""
+	for _, e := range entries {
+		if e.prefix != "" {
+			out.CommonPrefixes = append(out.CommonPrefixes, commonPrefixXML{Prefix: enc(e.prefix)})
+			last = e.prefix
+			continue
+		}
+		out.Versions = append(out.Versions, versionXML{
+			Key: enc(e.obj.Key), VersionID: "null", IsLatest: true, LastModified: e.obj.ModTime.UTC().Format(iso8601),
+			ETag: `"` + e.obj.ETag + `"`, Size: e.obj.Size, StorageClass: "STANDARD", Owner: owner,
+		})
+		last = e.obj.Key
+	}
+	if truncated {
+		out.NextKeyMarker = enc(last)
+		out.NextVersionIDMarker = "null"
+	}
+	s.writeXMLOK(w, out)
+	return nil
+}

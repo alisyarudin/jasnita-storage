@@ -244,6 +244,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request, info *reqInfo) e
 				return s.getBucketLocation(ctx, w, info)
 			case q.Has("uploads"):
 				return s.listMultipartUploads(ctx, w, r, info)
+			case q.Has("versions"):
+				return s.listObjectVersions(ctx, w, r, info)
 			case q.Has("versioning"):
 				return s.getBucketVersioning(ctx, w, info)
 			case q.Has("acl"):
